@@ -199,3 +199,45 @@ def test_cpu_off_when_gpu_off():
     state, a = ctrl.control_step(-20, **state)
     assert not state['cpu_active']
     assert has_action(a, 'cpu', 'stop')
+
+# ─────────────────────────────────────────────
+# EMERGENCY STOP
+# raw_pwr > EMERGENCY_STOP_W (300W) → immediate stop, no confirmations
+# ─────────────────────────────────────────────
+
+def test_emergency_stop_halts_gpu_immediately():
+    state = fresh()
+    state['gpu_active'] = True
+    state['cur_gpu_limit'] = 180
+    state, a = ctrl.control_step(+301, **state)
+    assert not state['gpu_active']
+    assert has_action(a, 'gpu', 'stop')
+
+def test_emergency_stop_halts_cpu_immediately():
+    state = fresh()
+    state['gpu_active'] = True
+    state['cpu_active'] = True
+    state['cur_gpu_limit'] = 180
+    state, a = ctrl.control_step(+301, **state)
+    assert not state['gpu_active']
+    assert not state['cpu_active']
+    assert has_action(a, 'gpu', 'stop')
+    assert has_action(a, 'cpu', 'stop')
+
+def test_emergency_stop_resets_counters():
+    state = fresh()
+    state['gpu_active'] = True
+    state['cur_gpu_limit'] = 180
+    state['gpu_hits_down'] = 1
+    state, _ = ctrl.control_step(+301, **state)
+    assert state['gpu_hits_up'] == 0
+    assert state['gpu_hits_down'] == 0
+
+def test_no_emergency_stop_at_threshold():
+    # Exactly 300W — normal confirmation logic applies
+    state = fresh()
+    state['gpu_active'] = True
+    state['cur_gpu_limit'] = 180
+    state, a = ctrl.control_step(+300, **state)
+    assert state['gpu_active']              # not stopped yet (needs 2 confirmations)
+    assert not has_action(a, 'gpu', 'stop')

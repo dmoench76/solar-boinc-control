@@ -24,6 +24,7 @@ CPU_EST_W = 70   # Estimated draw of 5 BOINC cores
 GRID_TOLERANCE         = 50   # W — allowed permanent grid draw
 HYSTERESIS             = 20   # W — CPU stop buffer
 REQUIRED_CONFIRMATIONS = 2
+EMERGENCY_STOP_W       = 300  # W — immediate stop without confirmation
 
 # Derived thresholds (virtual surplus based)
 # GPU starts when virtual surplus >= GPU_MIN_W - GRID_TOLERANCE = 50W
@@ -53,10 +54,9 @@ def set_boinc(target, mode):
 
 def get_cpu_power():
     try:
-        def read_uj():
-            res = subprocess.run(["sudo", "cat", RAPL_PATH], capture_output=True, text=True)
-            return int(res.stdout.strip())
-        e1 = read_uj(); time.sleep(0.2); e2 = read_uj()
+        with open(RAPL_PATH) as f: e1 = int(f.read())
+        time.sleep(0.2)
+        with open(RAPL_PATH) as f: e2 = int(f.read())
         return (e2 - e1) / 200000.0
     except: return 0.0
 
@@ -85,6 +85,21 @@ def control_step(raw_pwr, gpu_active, cpu_active, cur_gpu_limit,
     ideal_limit  = virtual + GRID_TOLERANCE
     actual_limit = max(GPU_MIN_W, min(int(ideal_limit), GPU_MAX_W))
     actions      = []
+
+    # --- Emergency stop (raw grid draw exceeds threshold) ---
+    if raw_pwr > EMERGENCY_STOP_W:
+        if cpu_active:
+            actions.append(('cpu', 'stop', None))
+            cpu_active = False
+        if gpu_active:
+            actions.append(('gpu', 'stop', None))
+            gpu_active = False
+        return {
+            'gpu_active': gpu_active, 'cpu_active': cpu_active,
+            'cur_gpu_limit': cur_gpu_limit,
+            'gpu_hits_up': 0, 'gpu_hits_down': 0,
+            'cpu_hits_up': 0, 'cpu_hits_down': 0,
+        }, actions
 
     # --- GPU ---
     if ideal_limit >= GPU_MIN_W:
