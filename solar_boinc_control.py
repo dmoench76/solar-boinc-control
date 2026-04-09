@@ -8,12 +8,18 @@ import os
 import psutil
 
 # Configuration
-TASMOTA_URL = "https://kant21.spdns.eu/tasmota/cm?cmnd=Status%208"
 CHECK_INTERVAL = 5
 DB_PATH = "/home/dmoench/solar_history.db"
 CONFIG_PATH = "/home/dmoench/solar_config.json"
+SETTINGS_PATH = "/home/dmoench/solar_settings.json"
 BOINC_CMD = "/usr/bin/boinccmd"
 RAPL_PATH = "/sys/class/powercap/intel-rapl:0/energy_uj"
+
+def get_settings():
+    with open(SETTINGS_PATH, 'r') as f:
+        return json.load(f)
+
+TASMOTA_URL = get_settings()["tasmota_url"]
 
 # Hardware Limits
 GPU_MIN_W = 100

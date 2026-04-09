@@ -1,0 +1,5 @@
+solar_settings.json
+solar_config.json
+solar_history.db
+__pycache__/
+*.pyc
