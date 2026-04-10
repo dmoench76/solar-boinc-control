@@ -30,7 +30,7 @@ CPU_EST_W = 70   # Estimated draw of 5 BOINC cores
 # Control parameters
 GRID_TOLERANCE         = 50   # W — allowed permanent grid draw
 HYSTERESIS             = 20   # W — CPU stop buffer
-REQUIRED_CONFIRMATIONS = 2
+REQUIRED_CONFIRMATIONS = 3
 EMERGENCY_STOP_W       = 300  # W — immediate stop without confirmation
 
 # Derived thresholds (virtual surplus based)

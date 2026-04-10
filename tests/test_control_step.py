@@ -31,28 +31,32 @@ def test_gpu_stays_off_just_below_start_threshold():
     s, a = ctrl.control_step(-49, **fresh())
     assert not s['gpu_active']
 
-def test_gpu_requires_two_confirmations_to_start():
+def test_gpu_requires_confirmations_to_start():
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
-    state, a = ctrl.control_step(-60, **state)   # surplus=60 → ideal=110 ≥ 100
-    assert not state['gpu_active']               # first cycle: not yet
-    assert state['gpu_hits_up'] == 1
-    state, a = ctrl.control_step(-60, **state)   # second cycle
+    for i in range(N - 1):
+        state, a = ctrl.control_step(-60, **state)
+        assert not state['gpu_active']
+        assert state['gpu_hits_up'] == i + 1
+    state, a = ctrl.control_step(-60, **state)
     assert state['gpu_active']
     assert has_action(a, 'gpu', 'start')
 
 def test_gpu_starts_at_proportional_limit():
     # surplus=80 → virtual=80 → ideal=130 → starts at 130W
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
-    state, _ = ctrl.control_step(-80, **state)
-    state, a = ctrl.control_step(-80, **state)
+    for _ in range(N):
+        state, a = ctrl.control_step(-80, **state)
     assert state['gpu_active']
     assert state['cur_gpu_limit'] == 130
 
 def test_gpu_starts_at_max_when_surplus_very_high():
     # surplus=250 → virtual=250 → ideal=300 → capped at 180W
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
-    state, _ = ctrl.control_step(-250, **state)
-    state, a = ctrl.control_step(-250, **state)
+    for _ in range(N):
+        state, a = ctrl.control_step(-250, **state)
     assert state['gpu_active']
     assert state['cur_gpu_limit'] == 180
 
@@ -63,10 +67,10 @@ def test_gpu_starts_at_max_when_surplus_very_high():
 
 def test_gpu_stable_with_200w_baseline_surplus():
     """Core stability test: GPU at 180W should not oscillate with 200W baseline."""
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
-    # GPU starts after 2 cycles at 200W surplus
-    state, _ = ctrl.control_step(-200, **state)
-    state, _ = ctrl.control_step(-200, **state)
+    for _ in range(N):
+        state, _ = ctrl.control_step(-200, **state)
     assert state['gpu_active']
     assert state['cur_gpu_limit'] == 180
 
@@ -111,24 +115,26 @@ def test_gpu_limit_tracks_down_when_grid_draw_excessive():
 # stop zone: ideal < GPU_MIN_W  →  virtual < 50
 # ─────────────────────────────────────────────
 
-def test_gpu_requires_two_cycles_to_stop():
-    # GPU at 100W, importing 60W → virtual=-60+100=40 < 50 → stop zone
+def test_gpu_requires_confirmations_to_stop():
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
     state['gpu_active'] = True
     state['cur_gpu_limit'] = 100
-    state, a = ctrl.control_step(+60, **state)    # first cycle
-    assert state['gpu_active']
-    assert not has_action(a, 'gpu', 'stop')
-    state, a = ctrl.control_step(+60, **state)    # second cycle
+    for _ in range(N - 1):
+        state, a = ctrl.control_step(+60, **state)
+        assert state['gpu_active']
+        assert not has_action(a, 'gpu', 'stop')
+    state, a = ctrl.control_step(+60, **state)
     assert not state['gpu_active']
     assert has_action(a, 'gpu', 'stop')
 
 def test_gpu_stop_resets_counters():
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
     state['gpu_active'] = True
     state['cur_gpu_limit'] = 100
-    state, _ = ctrl.control_step(+60, **state)
-    state, _ = ctrl.control_step(+60, **state)
+    for _ in range(N):
+        state, _ = ctrl.control_step(+60, **state)
     assert state['gpu_hits_down'] == 0
 
 def test_gpu_does_not_stop_at_exact_tolerance():
@@ -158,15 +164,16 @@ def test_cpu_does_not_start_when_virtual_surplus_too_low():
     assert state['cpu_hits_up'] == 0
     assert not has_action(a, 'cpu', 'start')
 
-def test_cpu_requires_two_confirmations_to_start():
-    # GPU at 180W, exporting 30W → virtual=30+180=210 ≥ 200 → start zone
+def test_cpu_requires_confirmations_to_start():
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
     state['gpu_active'] = True
     state['cur_gpu_limit'] = 180
-    state, a = ctrl.control_step(-30, **state)    # first cycle
-    assert not state['cpu_active']
-    assert state['cpu_hits_up'] == 1
-    state, a = ctrl.control_step(-30, **state)    # second cycle
+    for i in range(N - 1):
+        state, a = ctrl.control_step(-30, **state)
+        assert not state['cpu_active']
+        assert state['cpu_hits_up'] == i + 1
+    state, a = ctrl.control_step(-30, **state)
     assert state['cpu_active']
     assert has_action(a, 'cpu', 'start')
 
@@ -180,16 +187,17 @@ def test_cpu_stops_immediately_if_gpu_drops_below_max():
     assert not state['cpu_active']
     assert has_action(a, 'cpu', 'stop')
 
-def test_cpu_stops_after_two_cycles_when_virtual_drops():
-    # GPU at 180W, CPU active, import 10W → virtual=-10+180=170 < CPU_STOP_SURPLUS=180
+def test_cpu_stops_after_confirmations_when_virtual_drops():
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
     state['gpu_active'] = True
     state['cpu_active'] = True
     state['cur_gpu_limit'] = 180
-    state, a = ctrl.control_step(+10, **state)    # first cycle: virtual=170 < 180
-    assert state['cpu_active']
-    assert not has_action(a, 'cpu', 'stop')
-    state, a = ctrl.control_step(+10, **state)    # second cycle
+    for _ in range(N - 1):
+        state, a = ctrl.control_step(+10, **state)
+        assert state['cpu_active']
+        assert not has_action(a, 'cpu', 'stop')
+    state, a = ctrl.control_step(+10, **state)
     assert not state['cpu_active']
     assert has_action(a, 'cpu', 'stop')
 
@@ -221,8 +229,9 @@ def test_cpu_stops_first_when_surplus_drops():
     assert not has_action(a, 'gpu', 'stop')
     assert state['gpu_hits_down'] == 0            # counter reset
 
-def test_gpu_gets_two_measurements_after_cpu_stop():
-    """After CPU stops, GPU needs 2 more confirmations before stopping."""
+def test_gpu_gets_n_measurements_after_cpu_stop():
+    """After CPU stops, GPU needs REQUIRED_CONFIRMATIONS more cycles before stopping."""
+    N = ctrl.REQUIRED_CONFIRMATIONS
     state = fresh()
     state['gpu_active'] = True
     state['cpu_active'] = True
@@ -232,12 +241,13 @@ def test_gpu_gets_two_measurements_after_cpu_stop():
     assert not state['cpu_active']
     assert state['gpu_active']
     assert state['gpu_hits_down'] == 0
-    # Cycle 2: first GPU down-count (cpu already off)
-    state, a = ctrl.control_step(+200, **state)
-    assert state['gpu_active']
-    assert state['gpu_hits_down'] == 1
-    assert not has_action(a, 'gpu', 'stop')
-    # Cycle 3: second GPU down-count → stop
+    # N-1 more cycles: GPU counts down but stays alive
+    for i in range(N - 1):
+        state, a = ctrl.control_step(+200, **state)
+        assert state['gpu_active']
+        assert state['gpu_hits_down'] == i + 1
+        assert not has_action(a, 'gpu', 'stop')
+    # Final cycle: GPU stops
     state, a = ctrl.control_step(+200, **state)
     assert not state['gpu_active']
     assert has_action(a, 'gpu', 'stop')
@@ -292,10 +302,10 @@ def test_emergency_stop_resets_counters():
     assert state['gpu_hits_down'] == 0
 
 def test_no_emergency_stop_at_threshold():
-    # Exactly 300W — normal confirmation logic applies
+    # Exactly 300W — normal confirmation logic applies (needs N confirmations)
     state = fresh()
     state['gpu_active'] = True
     state['cur_gpu_limit'] = 180
     state, a = ctrl.control_step(+300, **state)
-    assert state['gpu_active']              # not stopped yet (needs 2 confirmations)
+    assert state['gpu_active']
     assert not has_action(a, 'gpu', 'stop')
