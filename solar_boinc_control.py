@@ -19,7 +19,8 @@ def get_settings():
     with open(SETTINGS_PATH, 'r') as f:
         return json.load(f)
 
-TASMOTA_URL = get_settings()["tasmota_url"]
+TASMOTA_URL      = get_settings()["tasmota_url"]
+BOINC_RPC_PASSWD = get_settings().get("boinc_rpc_password", "")
 
 # Hardware Limits
 GPU_MIN_W = 100
@@ -56,7 +57,11 @@ def set_boinc(target, mode):
     duration = 0 if mode == 'always' else 9999999
     if target == 'gpu' and mode == 'always':
         subprocess.run(["sudo", "nvidia-smi", "-pm", "1"], capture_output=True)
-    subprocess.run([BOINC_CMD, f"--set_{target}_mode", mode, str(duration)], capture_output=True)
+    cmd = [BOINC_CMD]
+    if BOINC_RPC_PASSWD:
+        cmd += ["--passwd", BOINC_RPC_PASSWD]
+    cmd += [f"--set_{target}_mode", mode, str(duration)]
+    subprocess.run(cmd, capture_output=True)
 
 def get_cpu_power():
     try:

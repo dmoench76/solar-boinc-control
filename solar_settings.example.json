@@ -1,5 +1,6 @@
 {
     "tasmota_url": "https://your-tasmota-host/cm?cmnd=Status%208",
     "einstein_user_id": "YOUR_EINSTEIN_USER_ID",
-    "job_log": "/var/lib/boinc-client/job_log_einstein.phys.uwm.edu.txt"
+    "job_log": "/var/lib/boinc-client/job_log_einstein.phys.uwm.edu.txt",
+    "boinc_rpc_password": "YOUR_BOINC_RPC_PASSWORD"
 }
