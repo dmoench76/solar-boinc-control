@@ -126,12 +126,21 @@ def control_step(raw_pwr, gpu_active, cpu_active, cur_gpu_limit,
             cur_gpu_limit = actual_limit
             gpu_hits_up = 0; gpu_hits_down = 0
     else:
-        # Virtual surplus insufficient for GPU_MIN_W: count down to stop
+        # Virtual surplus insufficient for GPU_MIN_W
         if gpu_active:
-            gpu_hits_down += 1; gpu_hits_up = 0
-            if gpu_hits_down >= REQUIRED_CONFIRMATIONS:
-                actions.append(('gpu', 'stop', None))
-                gpu_active = False; gpu_hits_down = 0
+            if cpu_active:
+                # CPU läuft noch — zuerst CPU stoppen, GPU-Countdown zurücksetzen.
+                # GPU bekommt 2 frische Messungen ohne CPU-Last.
+                actions.append(('cpu', 'stop', None))
+                cpu_active = False
+                cpu_hits_up = 0; cpu_hits_down = 0
+                gpu_hits_down = 0
+            else:
+                # CPU bereits aus — jetzt GPU-Countdown
+                gpu_hits_down += 1; gpu_hits_up = 0
+                if gpu_hits_down >= REQUIRED_CONFIRMATIONS:
+                    actions.append(('gpu', 'stop', None))
+                    gpu_active = False; gpu_hits_down = 0
         else:
             gpu_hits_up = 0; gpu_hits_down = 0
 

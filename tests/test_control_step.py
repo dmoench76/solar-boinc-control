@@ -201,6 +201,64 @@ def test_cpu_off_when_gpu_off():
     assert has_action(a, 'cpu', 'stop')
 
 # ─────────────────────────────────────────────
+# CPU-FIRST STOP: when GPU pressure hits, CPU stops first
+# GPU gets 2 fresh measurements before it stops
+# ─────────────────────────────────────────────
+
+def test_cpu_stops_first_when_surplus_drops():
+    """Surplus suddenly too low for GPU: CPU stops immediately, GPU stays."""
+    state = fresh()
+    state['gpu_active'] = True
+    state['cpu_active'] = True
+    state['cur_gpu_limit'] = 180
+    # raw_pwr = +100 → virtual = -100 + 180 = 80 → ideal = 130 → > GPU_MIN(100) ... hmm
+    # Need ideal < GPU_MIN: virtual < 50 → raw_pwr > 130 + gpu_limit
+    # raw_pwr = +200: virtual = -200 + 180 = -20 → ideal = 30 < 100
+    state, a = ctrl.control_step(+200, **state)
+    assert not state['cpu_active']
+    assert has_action(a, 'cpu', 'stop')
+    assert state['gpu_active']                    # GPU still running
+    assert not has_action(a, 'gpu', 'stop')
+    assert state['gpu_hits_down'] == 0            # counter reset
+
+def test_gpu_gets_two_measurements_after_cpu_stop():
+    """After CPU stops, GPU needs 2 more confirmations before stopping."""
+    state = fresh()
+    state['gpu_active'] = True
+    state['cpu_active'] = True
+    state['cur_gpu_limit'] = 180
+    # Cycle 1: CPU stops, gpu_hits_down reset to 0
+    state, a = ctrl.control_step(+200, **state)
+    assert not state['cpu_active']
+    assert state['gpu_active']
+    assert state['gpu_hits_down'] == 0
+    # Cycle 2: first GPU down-count (cpu already off)
+    state, a = ctrl.control_step(+200, **state)
+    assert state['gpu_active']
+    assert state['gpu_hits_down'] == 1
+    assert not has_action(a, 'gpu', 'stop')
+    # Cycle 3: second GPU down-count → stop
+    state, a = ctrl.control_step(+200, **state)
+    assert not state['gpu_active']
+    assert has_action(a, 'gpu', 'stop')
+
+def test_gpu_recovers_after_cpu_stop():
+    """Surplus recovers after CPU stops — GPU should stay on."""
+    state = fresh()
+    state['gpu_active'] = True
+    state['cpu_active'] = True
+    state['cur_gpu_limit'] = 180
+    # Surplus drops: CPU stops
+    state, a = ctrl.control_step(+200, **state)
+    assert not state['cpu_active']
+    assert state['gpu_active']
+    # Surplus recovers (with CPU off Tasmota improves)
+    state, a = ctrl.control_step(-50, **state)   # -50W: exporting again
+    assert state['gpu_active']
+    assert not has_action(a, 'gpu', 'stop')
+    assert state['gpu_hits_down'] == 0
+
+# ─────────────────────────────────────────────
 # EMERGENCY STOP
 # raw_pwr > EMERGENCY_STOP_W (300W) → immediate stop, no confirmations
 # ─────────────────────────────────────────────

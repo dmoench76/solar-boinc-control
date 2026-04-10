@@ -40,7 +40,7 @@ class DashboardState:
         self.lock = threading.Lock()
         self.tasmota = {"power": 0, "e_in": 0, "e_out": 0, "ok": False}
         self.system = {"cpu_usage": 0, "cpu_pwr": 0, "mem_usage": 0, "mem_total": 0, "gpu_usage": "0%", "gpu_pwr": 0, "gpu_pstate": "N/A", "net_up": 0, "net_down": 0}
-        self.boinc = {"tasks": [], "mode": "Unknown", "disk": "N/A", "credits": "N/A"}
+        self.boinc = {"tasks": [], "mode": "Unknown", "disk_used": "N/A", "disk_free": "N/A", "credits": "N/A"}
         self.history = {"avg_pwr": 0, "runtime": 0, "samples": 0, "energy_today": 0, "label": "INITIALIZING"}
         self.global_stats = {"total": "N/A", "rac": "N/A"}
         self.completions = {"cpu": 0, "gpu": 0}
@@ -113,13 +113,19 @@ def data_fetcher_thread(state):
             disk_res = subprocess.run([BOINC_CMD, "--get_disk_usage"], capture_output=True, text=True)
             proj_res = subprocess.run([BOINC_CMD, "--get_project_status"], capture_output=True, text=True)
             
-            disk_usage = "N/A"; credits_str = "N/A"
+            disk_used = "N/A"; disk_free = "N/A"; credits_str = "N/A"
             for line in disk_res.stdout.splitlines():
-                if "total disk usage:" in line: disk_usage = line.split(":")[1].strip()
+                line = line.strip()
+                if line.startswith("free:"):
+                    mb = float(line.split(":")[1].replace("MB","").strip())
+                    disk_free = f"{mb/1024:.1f} GB"
+                elif line.startswith("disk usage:"):
+                    mb = float(line.split(":")[1].replace("MB","").strip())
+                    disk_used = f"{mb/1024:.2f} GB"
             for line in proj_res.stdout.splitlines():
                 if "user_total_credit:" in line: credits_str = line.split(":")[1].strip()
-            
-            b_data = {"tasks": tasks, "mode": b_mode, "disk": disk_usage, "credits": credits_str}
+
+            b_data = {"tasks": tasks, "mode": b_mode, "disk_used": disk_used, "disk_free": disk_free, "credits": credits_str}
         except: b_data = {"tasks": [], "mode": "Error", "disk": "N/A", "credits": "N/A"}
 
         # 4. History & DB
@@ -219,7 +225,7 @@ def generate_dashboard(state):
 
         # Right Panel
         hist_str = f"Avg (24h): [bold white]{s.history['avg_pwr']:.1f} W[/]\nRuntime:   [bold green]{s.history['runtime']:.1f} h[/]\n\n"
-        hist_str += f"[bold white]Einstein@Home Global[/]\nTotal: [bold green]{s.global_stats['total']}[/]\nRAC:   [bold green]{s.global_stats['rac']}[/]\n\nDisk:  [bold blue]{s.boinc['disk']}[/]"
+        hist_str += f"[bold white]Einstein@Home Global[/]\nTotal: [bold green]{s.global_stats['total']}[/]\nRAC:   [bold green]{s.global_stats['rac']}[/]\n\n[bold white]Disk[/]\nBOINC: [bold yellow]{s.boinc['disk_used']}[/]\nFrei:  [bold green]{s.boinc['disk_free']}[/]"
 
         main_layout = Layout()
         main_layout.split_row(Layout(Panel(p_str + sys_str, title="[bold yellow]Energy[/]"), ratio=1), Layout(task_layout, ratio=2), Layout(Panel(hist_str, title="[bold blue]Stats[/]"), ratio=1))
